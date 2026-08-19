@@ -1,0 +1,120 @@
+name: Reverend Insanity Quality Improvement Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Operation Mode'
+        required: true
+        default: 'full'
+        type: choice
+        options:
+          - full
+          - heal_flagged
+          - extract_glossary_only
+          - evaluate_only
+      threshold:
+        description: 'Quality Score Threshold to trigger healing (0-100)'
+        required: false
+        default: '85'
+        type: string
+      volume:
+        description: 'Target Volume (leave All for full novel)'
+        required: false
+        default: 'All'
+        type: choice
+        options:
+          - All
+          - '1'
+          - '2'
+          - '3'
+          - '4'
+          - '5'
+  push:
+    paths:
+      - 'output/translated_ar/**'
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  quality_pipeline:
+    name: 🚀 Quality Enhancement & Evaluation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🐍 Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: 📦 Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests beautifulsoup4
+
+      - name: 💾 Backup Existing Report (Before State)
+        run: |
+          mkdir -p output
+          if [ -f output/smart_quality_report.json ]; then
+            cp output/smart_quality_report.json output/smart_quality_report_before.json
+          fi
+
+      - name: 🔍 Step 1: Extract Full Xianxia Cultivation Glossary
+        if: ${{ inputs.mode == 'full' || inputs.mode == 'extract_glossary_only' || github.event_name == 'push' }}
+        run: |
+          python extract_full_glossary.py
+
+      - name: 📊 Step 2: Run Baseline Quality Evaluation
+        if: ${{ inputs.mode == 'full' || inputs.mode == 'evaluate_only' || github.event_name == 'push' }}
+        run: |
+          python smart_quality_evaluator.py
+          if [ ! -f output/smart_quality_report_before.json ]; then
+            cp output/smart_quality_report.json output/smart_quality_report_before.json
+          fi
+
+      - name: 🩺 Step 3: Run Automated Quality Healer & Enhancer
+        if: ${{ inputs.mode == 'full' || inputs.mode == 'heal_flagged' || github.event_name == 'push' }}
+        run: |
+          VOL_FLAG=""
+          if [ "${{ inputs.volume }}" != "All" ] && [ -n "${{ inputs.volume }}" ]; then
+            VOL_FLAG="--volume ${{ inputs.volume }}"
+          else
+            VOL_FLAG="--auto-flagged"
+          fi
+          python quality_healer.py $VOL_FLAG --threshold ${{ inputs.threshold || 85 }}
+
+      - name: 📈 Step 4: Run Post-Healing Quality Evaluation
+        if: ${{ inputs.mode == 'full' || inputs.mode == 'heal_flagged' || github.event_name == 'push' }}
+        run: |
+          python smart_quality_evaluator.py
+
+      - name: 📊 Step 5: Generate Before/After Comparison Delta Report
+        if: ${{ inputs.mode == 'full' || inputs.mode == 'heal_flagged' || github.event_name == 'push' }}
+        run: |
+          python compare_evaluations.py
+
+      - name: 📚 Step 6: Recompile Master Novel File
+        if: ${{ inputs.mode == 'full' || inputs.mode == 'heal_flagged' }}
+        run: |
+          python compile_novel.py
+
+      - name: 🚀 Step 7: Commit & Push Improved Translations & Reports
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --staged --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "chore(quality): auto-heal translation issues, update glossary & evaluation reports [skip ci]"
+            git push origin main
+          fi

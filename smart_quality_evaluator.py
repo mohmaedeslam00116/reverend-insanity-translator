@@ -44,11 +44,14 @@ from organize_volumes import get_volume_dir, VOLUME_RANGES
 
 
 # ─────────────────────────────────────────────────────────────────────
-# Core Glossary: Key terms that MUST appear in Arabic translations
+# Core & Extended Glossary for Reverend Insanity
 # ─────────────────────────────────────────────────────────────────────
-GLOSSARY = {
-    # Character names
-    "Fang Yuan": ["فانغ يوان", "فانغ يوان"],
+GLOSSARY_FILE = Path("glossary.json")
+GLOSSARY: Dict[str, List[str]] = {}
+
+# Default core glossary with common variants
+CORE_GLOSSARY = {
+    "Fang Yuan": ["فانغ يوان"],
     "Fang Zheng": ["فانغ تشنغ", "فانغ جينغ", "فانغ تشينغ"],
     "Bai Ning Bing": ["باي نينغ بينغ"],
     "Hei Lou Lan": ["هي لو لان", "هاي لو لان"],
@@ -56,17 +59,35 @@ GLOSSARY = {
     "Giant Sun": ["الشمس العملاقة"],
     "Star Constellation": ["كوكبة النجوم", "كوكبة النجم"],
     "Thieving Heaven": ["سارق السماء", "لص السماء"],
-    # Key terms
     "Spring Autumn Cicada": ["زيز الربيع والخريف"],
-    "Gu Master": ["سيد القو", "سيد الغو", "معلم القو"],
-    "Gu Immortal": ["خالد القو", "خالد الغو"],
-    "Gu worm": ["دودة القو", "دودة الغو", "حشرة القو"],
+    "Gu Master": ["سيد غو", "سيد القو", "سيد الغو", "معلم القو"],
+    "Gu Immortal": ["خالد غو", "خالد القو", "خالد الغو"],
+    "Gu worm": ["دودة غو", "دودة القو", "دودة الغو", "حشرة القو", "قو", "غو"],
     "aperture": ["الفتحة", "فتحة"],
     "primeval essence": ["الجوهر البدائي", "جوهر بدائي"],
+    "immortal essence": ["الجوهر الخالد", "جوهر خالد"],
     "blessed land": ["الأرض المباركة", "أرض مباركة"],
     "grotto-heaven": ["الكهف السماوي", "كهف سماوي"],
-    "dao marks": ["علامات الداو", "علامات داو"],
+    "dao marks": ["علامات الداو", "علامات داو", "علامة داو"],
+    "killer move": ["حركة قاتلة", "الحركة القاتلة"],
+    "heavenly court": ["المحكمة السماوية", "البلاط السماوي"],
+    "river of time": ["نهر الزمن", "نهر الوقت"],
 }
+
+GLOSSARY.update(CORE_GLOSSARY)
+
+# Load full extracted glossary if available
+if GLOSSARY_FILE.exists():
+    try:
+        with open(GLOSSARY_FILE, "r", encoding="utf-8") as f:
+            ext_gloss = json.load(f)
+            for k, v in ext_gloss.items():
+                if k not in GLOSSARY:
+                    GLOSSARY[k] = [v]
+                elif v not in GLOSSARY[k]:
+                    GLOSSARY[k].append(v)
+    except Exception:
+        pass
 
 # Arabic Unicode ranges for detection
 ARABIC_RANGES = [
@@ -112,20 +133,29 @@ def find_duplicates(text: str, min_length: int = 50) -> List[str]:
     return [p[:100] + "..." for p, count in counter.items() if count > 1]
 
 
+# Pre-process glossary for microsecond-fast search
+GLOSSARY_LOWER = [
+    (en_term.lower(), [var.lower() for var in variants], en_term)
+    for en_term, variants in GLOSSARY.items()
+]
+
+
 def check_glossary(en_text: str, ar_text: str) -> Dict[str, Any]:
     """Check if key glossary terms are properly translated."""
     found = 0
     missing = []
     checked = 0
 
-    for en_term, ar_variants in GLOSSARY.items():
-        if en_term.lower() in en_text.lower():
+    en_lower = en_text.lower()
+    ar_lower = ar_text.lower()
+
+    for en_term_lower, ar_vars_lower, original_en in GLOSSARY_LOWER:
+        if en_term_lower in en_lower:
             checked += 1
-            term_found = any(ar_var in ar_text for ar_var in ar_variants)
-            if term_found:
+            if any(v in ar_lower for v in ar_vars_lower):
                 found += 1
             else:
-                missing.append(en_term)
+                missing.append(original_en)
 
     return {
         "checked": checked,
