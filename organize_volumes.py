@@ -3,51 +3,59 @@ import re
 from pathlib import Path
 from config import Config
 
+VOLUME_RANGES = [
+    (1, 500, "Volume_1 (Chapters 0001 - 0500)"),
+    (501, 1000, "Volume_2 (Chapters 0501 - 1000)"),
+    (1001, 1500, "Volume_3 (Chapters 1001 - 1500)"),
+    (1501, 2000, "Volume_4 (Chapters 1501 - 2000)"),
+    (2001, 2500, "Volume_5 (Chapters 2001 - 2334)"),
+]
 
-def organize_into_volumes():
-    """
-    Organizes all translated chapters into 5 clean volume directories
-    to avoid GitHub's 1,000-file per directory display limit.
-    """
-    Config.init_directories()
-    trans_dir = Config.TRANSLATED_AR_DIR
-    files = list(trans_dir.glob("chapter_*.txt"))
 
-    if not files:
-        print("[!] لم يتم العثور على فصول مترجمة لتنظيمها.")
-        return
+def get_volume_dir(base_dir: Path, chapter_num: int) -> Path:
+    """Return the proper volume subfolder for a given chapter number."""
+    for start_num, end_num, vol_name in VOLUME_RANGES:
+        if start_num <= chapter_num <= end_num:
+            target = base_dir / vol_name
+            target.mkdir(parents=True, exist_ok=True)
+            return target
+    target = base_dir / "Volume_Other"
+    target.mkdir(parents=True, exist_ok=True)
+    return target
 
-    print(f"[*] جاري تنظيم {len(files)} فصلاً في مجلدات أجزاء مرتبة...")
 
-    volume_ranges = [
-        (1, 500, "Volume_1 (الفصول 0001 - 0500)"),
-        (501, 1000, "Volume_2 (الفصول 0501 - 1000)"),
-        (1001, 1500, "Volume_3 (الفصول 1001 - 1500)"),
-        (1501, 2000, "Volume_4 (الفصول 1501 - 2000)"),
-        (2001, 2500, "Volume_5 (الفصول 2001 - 2334)"),
-    ]
+def organize_directory(base_dir: Path):
+    """Move all loose chapter_XXXX.txt files in base_dir into their volume subfolders."""
+    if not base_dir.exists():
+        return 0
 
-    for start_num, end_num, vol_name in volume_ranges:
-        vol_dir = trans_dir / vol_name
-        vol_dir.mkdir(parents=True, exist_ok=True)
-
-    moved_count = 0
+    files = list(base_dir.glob("chapter_*.txt"))
+    moved = 0
     for f in files:
         m = re.search(r"chapter_(\d+)", f.name)
         if not m:
             continue
         cnum = int(m.group(1))
+        target_dir = get_volume_dir(base_dir, cnum)
+        target_path = target_dir / f.name
+        shutil.move(str(f), str(target_path))
+        moved += 1
+    return moved
 
-        for start_num, end_num, vol_name in volume_ranges:
-            if start_num <= cnum <= end_num:
-                target_dir = trans_dir / vol_name
-                target_path = target_dir / f.name
-                shutil.move(str(f), str(target_path))
-                moved_count += 1
-                break
 
-    print(f"[✓] تم تنظيم وتوزيع {moved_count} فصلاً في 5 مجلدات بنجاح!")
+def organize_all():
+    Config.init_directories()
+    print("=" * 70)
+    print(" 🗂️ تنظيم الفصول في مجلدات أجزاء (Volumes)")
+    print("=" * 70)
+
+    trans_moved = organize_directory(Config.TRANSLATED_AR_DIR)
+    print(f" • تم تنظيم {trans_moved} فصلاً مترجماً في مجلدات الأجزاء (output/translated_ar/Volume_X).")
+
+    raw_moved = organize_directory(Config.RAW_EN_DIR)
+    print(f" • تم تنظيم {raw_moved} فصلاً خام في مجلدات الأجزاء (output/raw_en/Volume_X).")
+    print("=" * 70)
 
 
 if __name__ == "__main__":
-    organize_into_volumes()
+    organize_all()

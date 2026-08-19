@@ -18,6 +18,9 @@ if sys.platform == "win32":
         pass
 
 
+from organize_volumes import get_volume_dir
+
+
 class ParallelNovelTranslator:
     """
     High-performance concurrent translator using multi-threading.
@@ -31,13 +34,22 @@ class ParallelNovelTranslator:
         self.completed_count = 0
         self.failed_count = 0
 
+    def find_file(self, base_dir: Path, chapter_num: int) -> Path:
+        """Find a chapter file either directly or in its volume subfolder."""
+        vol_path = get_volume_dir(base_dir, chapter_num) / f"chapter_{chapter_num:04d}.txt"
+        if vol_path.exists():
+            return vol_path
+        flat_path = base_dir / f"chapter_{chapter_num:04d}.txt"
+        return flat_path
+
     def translate_single_chapter(self, chapter_num: int) -> dict:
         """Process and translate a single chapter from local raw_en file."""
-        raw_file = Config.RAW_EN_DIR / f"chapter_{chapter_num:04d}.txt"
-        trans_file = Config.TRANSLATED_AR_DIR / f"chapter_{chapter_num:04d}.txt"
+        raw_file = self.find_file(Config.RAW_EN_DIR, chapter_num)
+        trans_vol_dir = get_volume_dir(Config.TRANSLATED_AR_DIR, chapter_num)
+        trans_file = trans_vol_dir / f"chapter_{chapter_num:04d}.txt"
 
         if not raw_file.exists():
-            return {"chapter": chapter_num, "status": "error", "error": "Raw file not found"}
+            return {"chapter": chapter_num, "status": "error", "error": f"Raw file not found: {raw_file}"}
 
         try:
             with open(raw_file, "r", encoding="utf-8") as f:
@@ -85,8 +97,8 @@ class ParallelNovelTranslator:
         # Find which chapters are actually missing
         pending_chapters = []
         for cnum in range(start_chapter, end_chapter + 1):
-            trans_file = Config.TRANSLATED_AR_DIR / f"chapter_{cnum:04d}.txt"
-            if not trans_file.exists():
+            t_file = self.find_file(Config.TRANSLATED_AR_DIR, cnum)
+            if not t_file.exists():
                 pending_chapters.append(cnum)
 
         total_pending = len(pending_chapters)
