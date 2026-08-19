@@ -24,11 +24,15 @@ on:
       end_chapter:
         description: 'End Chapter (فصل النهاية)'
         required: false
-        default: '100'
+        default: '1900'
       workers:
-        description: 'Parallel Threads (عدد المسارات: 5 لكل مفتاحين)'
+        description: 'Parallel Threads (عدد المسارات المتوازية)'
         required: false
-        default: '5'
+        default: '6'
+      batch_size:
+        description: 'Batch Size for Git Push (حجم الدفعة للرفع الدوري)'
+        required: false
+        default: '100'
       overwrite:
         description: 'Overwrite & Clean Old (استبدال الترجمة القديمة)'
         type: boolean
@@ -65,7 +69,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests beautifulsoup4
 
-      - name: 🚀 Run Gemini Multi-Key Pipeline
+      - name: ⚙️ Configure Git for Auto-Commit Batches
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: 🚀 Run Gemini Multi-Key Unstoppable Pipeline
         env:
           PYTHONUNBUFFERED: "1"
           GEMINI_API_KEYS: "${{ secrets.GEMINI_API_KEYS || secrets.GEMINI_API_KEY || github.event.inputs.custom_keys }}"
@@ -76,21 +85,22 @@ jobs:
           fi
           python gemini_novel_translator.py \
             --novel "${{ github.event.inputs.novel || 'reverend-insanity' }}" \
-            --model "${{ github.event.inputs.model || 'gemini-2.0-flash-lite-preview-02-05' }}" \
+            --model "${{ github.event.inputs.model || 'gemini-3.5-flash-lite' }}" \
             --keys "$GEMINI_API_KEYS" \
             --start ${{ github.event.inputs.start_chapter || '1' }} \
-            --end ${{ github.event.inputs.end_chapter || '100' }} \
-            --workers ${{ github.event.inputs.workers || '5' }} \
+            --end ${{ github.event.inputs.end_chapter || '1900' }} \
+            --workers ${{ github.event.inputs.workers || '6' }} \
+            --batch-size ${{ github.event.inputs.batch_size || '100' }} \
             $OVERWRITE_FLAG
 
-      - name: 💾 Commit & Push Translated Chapters
+      - name: 💾 Final Commit & Push Remaining
+        if: always()
         run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add novels/${{ github.event.inputs.novel || 'reverend-insanity' }}/
           if git diff --staged --quiet; then
-            echo "No new chapters to commit."
+            echo "All batches already committed and pushed."
           else
-            git commit -m "feat(gemini): translate chapters ${{ github.event.inputs.start_chapter }}-${{ github.event.inputs.end_chapter }} of ${{ github.event.inputs.novel }} via Gemini Flash Lite [skip ci]"
-            git push origin main
+            git commit -m "feat(gemini): final sync for ${{ github.event.inputs.novel }} (chapters ${{ github.event.inputs.start_chapter }}-${{ github.event.inputs.end_chapter }}) [skip ci]" || true
+            git pull --rebase origin main || true
+            git push origin main || true
           fi
