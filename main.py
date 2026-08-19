@@ -110,6 +110,18 @@ def parse_args():
         help=f"اسم نموذج الذكاء الاصطناعي على Kilo AI Gateway (الافتراضي: {Config.KILO_MODEL})",
     )
     parser.add_argument(
+        "--scrape-all-first",
+        action="store_true",
+        default=True,
+        help="سحب جميع الفصول الإنجليزية أولاً مع فاصل زمني آمن ثم بدء ترجمتها بالكامل دفعة واحدة",
+    )
+    parser.add_argument(
+        "--scrape-delay",
+        type=float,
+        default=1.5,
+        help="الفاصل الزمني بالثواني بين سحب كل فصل لتفادي حظر الموقع (الافتراضي: 1.5 ثانية)",
+    )
+    parser.add_argument(
         "--raw-only",
         action="store_true",
         help="سحب الفصول الإنجليزية فقط دون ترجمتها",
@@ -127,22 +139,6 @@ def parse_args():
     return parser.parse_args()
 
 
-def countdown_delay(seconds: float):
-    """Visual countdown for delays between chapter requests."""
-    if seconds <= 0:
-        return
-    print(f"  [⏳] استراحة لمدة {int(seconds)} ثانية لتفادي الحظر وتنظيم الطلبات...")
-    step = 1
-    remaining = int(seconds)
-    while remaining > 0:
-        sys.stdout.write(f"\r     -> المتبقي: {remaining} ثانية... ")
-        sys.stdout.flush()
-        time.sleep(step)
-        remaining -= step
-    sys.stdout.write("\r" + " " * 40 + "\r")
-    sys.stdout.flush()
-
-
 def run_pipeline():
     args = parse_args()
     Config.init_directories()
@@ -150,14 +146,7 @@ def run_pipeline():
     tracker = ProgressTracker(Config.PROGRESS_FILE)
 
     # Determine starting chapter
-    start_chap = args.start
-    if start_chap is None:
-        if args.auto or True:
-            # Find first uncompleted chapter
-            last_done = tracker.data.get("last_chapter", 0)
-            start_chap = last_done + 1
-        else:
-            start_chap = 1
+    start_chap = args.start if args.start is not None else 1
 
     # Determine ending chapter
     if args.end is not None:
@@ -172,17 +161,58 @@ def run_pipeline():
     print("=" * 70)
     print(f" • نطاق الفصول: من {start_chap} إلى {end_chap}")
     print(f" • المحرك: {'Google Fast Engine (فائق السرعة مع قاموس الرواية)' if args.engine == 'fast' else f'AI Engine ({args.model})'}")
-    print(f" • الفاصل الزمني: {args.delay} ثانية")
+    print(f" • تأخير السحب: {args.scrape_delay} ثانية")
+    print(f" • تأخير الترجمة: {args.delay} ثانية")
     print(f" • مجلد الإخراج: {Config.OUTPUT_DIR.resolve()}")
     print("=" * 70)
 
     scraper = NovelFireScraper()
-    
+
     if args.engine == "fast":
         from fast_translator import FastGoogleTranslator
         translator = FastGoogleTranslator()
     else:
         translator = KiloTranslator(model=args.model)
+
+    # =========================================================================
+    # PHASE 1: SCRAPING ALL CHAPTERS FIRST (سحب جميع الفصول الإنجليزية أولاً)
+    # =========================================================================
+    if not args.translate_only:
+        print("\n" + "=" * 70)
+        print(" 📥 [المرحلة الأولى] سحب الفصول الإنجليزية من novelfire.net")
+        print("=" * 70)
+
+        for chapter_num in range(start_chap, end_chap + 1):
+            raw_file = Config.RAW_EN_DIR / f"chapter_{chapter_num:04d}.txt"
+            if raw_file.exists() and not args.force:
+                continue
+
+            print(f"  [سحب] جاري سحب الفصل {chapter_num}/{end_chap}...", end="", flush=True)
+            scrape_res = scraper.fetch_chapter(chapter_num, max_retries=Config.MAX_RETRIES)
+
+            if scrape_res.get("status") == "success":
+                scraper.save_raw_chapter(scrape_res, raw_file)
+                p_cnt = scrape_res.get("paragraph_count", 0)
+                print(f" ✓ ({p_cnt} فقرة)")
+            else:
+                err = scrape_res.get("error", "خطأ")
+                print(f" ❌ ({err})")
+
+            # Polite delay between scrapes
+            time.sleep(args.scrape_delay)
+
+        print("\n[✓] اكتملت مرحلة سحب الفصول الإنجليزية بالكامل!\n")
+
+    if args.raw_only:
+        print("تم الانتهاء من وضع السحب فقط (--raw-only).")
+        return
+
+    # =========================================================================
+    # PHASE 2: TRANSLATING ALL SCRAPED CHAPTERS (ترجمة الفصول المسحوبة بالكامل)
+    # =========================================================================
+    print("=" * 70)
+    print(" 🌐 [المرحلة الثانية] ترجمة الفصول وحفظها بالعربية الفصحى")
+    print("=" * 70)
 
     total_chapters = end_chap - start_chap + 1
     success_count = 0
@@ -194,66 +224,29 @@ def run_pipeline():
         raw_file = Config.RAW_EN_DIR / f"chapter_{chapter_num:04d}.txt"
         trans_file = Config.TRANSLATED_AR_DIR / f"chapter_{chapter_num:04d}.txt"
 
-        print(f"\n[{idx}/{total_chapters}] >>> معالجة الفصل {chapter_num} <<<")
-
-        # Check if already completed
         if not args.force and tracker.is_completed(chapter_num) and trans_file.exists():
-            print(f"  [✓] الفصل {chapter_num} مكتمل مسبقاً. تم التخطي.")
             skipped_count += 1
             continue
 
-        chapter_title = f"Chapter {chapter_num}"
-        paragraphs = []
-
-        # -------------------------------------------------------------
-        # STEP 1: SCRAPING / LOADING RAW CHAPTER
-        # -------------------------------------------------------------
-        if args.translate_only:
-            # Read from existing raw file
-            if not raw_file.exists():
-                print(f"  [!] لم يتم العثور على الملف الإنجليزي للفصل {chapter_num} في {raw_file}")
-                tracker.mark_failed(chapter_num, "Raw file not found in translate-only mode")
-                failed_count += 1
-                continue
-            with open(raw_file, "r", encoding="utf-8") as f:
-                lines = f.readlines()
-                if lines and lines[0].startswith("#"):
-                    chapter_title = lines[0].replace("#", "").strip()
-                    paragraphs = [p.strip() for p in "".join(lines[1:]).split("\n\n") if p.strip()]
-                else:
-                    paragraphs = [p.strip() for p in "".join(lines).split("\n\n") if p.strip()]
-        else:
-            # Scrape from novelfire.net
-            print(f"  [1/2] سحب الفصل من novelfire.net...")
-            scrape_res = scraper.fetch_chapter(chapter_num, max_retries=Config.MAX_RETRIES)
-
-            if scrape_res.get("status") != "success":
-                err_msg = scrape_res.get("error", "فشل السحب")
-                print(f"  [X] خطأ أثناء سحب الفصل {chapter_num}: {err_msg}")
-                tracker.mark_failed(chapter_num, f"Scrape error: {err_msg}")
-                failed_count += 1
-                continue
-
-            chapter_title = scrape_res["title"]
-            paragraphs = scrape_res["paragraphs"]
-            print(f"  [✓] تم سحب العنوان بنجاح: \"{chapter_title}\" ({len(paragraphs)} فقرة)")
-
-            # Save raw English text
-            scraper.save_raw_chapter(scrape_res, raw_file)
-
-        # If raw-only mode requested, finish here for this chapter
-        if args.raw_only:
-            print(f"  [✓] تم حفظ النص الخام للفصل {chapter_num} بنجاح.")
-            success_count += 1
-            if idx < total_chapters:
-                countdown_delay(args.delay)
+        if not raw_file.exists():
+            print(f"[{idx}/{total_chapters}] [!] تخطي الفصل {chapter_num} (الملف الإنجليزي غير موجود)")
+            failed_count += 1
             continue
 
-        # -------------------------------------------------------------
-        # STEP 2: TRANSLATING WITH KILO AI GATEWAY
-        # -------------------------------------------------------------
-        print(f"  [2/2] إرسال الفصل إلى Kilo AI Gateway للترجمة الأدبية...")
+        # Load raw file
+        with open(raw_file, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+            if lines and lines[0].startswith("#"):
+                chapter_title = lines[0].replace("#", "").strip()
+                paragraphs = [p.strip() for p in "".join(lines[1:]).split("\n\n") if p.strip()]
+            else:
+                chapter_title = f"Chapter {chapter_num}"
+                paragraphs = [p.strip() for p in "".join(lines).split("\n\n") if p.strip()]
+
+        print(f"[{idx}/{total_chapters}] ✍️ ترجمة الفصل {chapter_num} (\"{chapter_title}\" - {len(paragraphs)} فقرة)...", end="", flush=True)
+
         try:
+            t_start = time.time()
             trans_res = translator.translate_chapter(chapter_title, paragraphs)
             if trans_res.get("status") == "success":
                 translated_text = trans_res["translated_text"]
@@ -264,34 +257,40 @@ def run_pipeline():
                     filepath=trans_file,
                 )
                 tracker.mark_completed(chapter_num)
-                print(f"  [✨] اكتملت ترجمة الفصل {chapter_num} وتم حفظه في: {trans_file.name}")
+                t_dur = time.time() - t_start
+                print(f" ✨ تم في {t_dur:.1f}ث")
                 success_count += 1
             else:
-                err_msg = trans_res.get("error", "خطأ غير معروف في الترجمة")
-                print(f"  [X] فشل في ترجمة الفصل {chapter_num}: {err_msg}")
-                tracker.mark_failed(chapter_num, err_msg)
+                err = trans_res.get("error", "فشل")
+                print(f" ❌ ({err})")
                 failed_count += 1
         except Exception as e:
-            print(f"  [X] استثناء أثناء ترجمة الفصل {chapter_num}: {e}")
-            tracker.mark_failed(chapter_num, str(e))
+            print(f" ❌ (استثناء: {e})")
             failed_count += 1
 
-        # Delay before next chapter
-        if idx < total_chapters:
-            countdown_delay(args.delay)
+        if args.delay > 0:
+            time.sleep(args.delay)
+
+    # Compile the book
+    try:
+        from compile_novel import compile_translated_chapters
+        compile_translated_chapters()
+    except Exception as e:
+        print(f"[Compiler] تحذير أثناء تجميع الكتاب: {e}")
 
     total_time = time.time() - start_time
     print("\n" + "=" * 70)
-    print(" 🎉 اكتملت عملية المعالجة!")
+    print(" 🎉 اكتملت العملية بالكامل!")
     print("=" * 70)
     print(f" • إجمالي الفصول المحددة: {total_chapters}")
     print(f" • المكتمل بنجاح: {success_count}")
     print(f" • المتخطى (مكتمل مسبقاً): {skipped_count}")
     print(f" • المتعثر/فشل: {failed_count}")
     print(f" • إجمالي الوقت المستغرق: {total_time/60:.2f} دقيقة")
-    print(f" • ملفات الترجمة موجودة في: {Config.TRANSLATED_AR_DIR.resolve()}")
+    print(f" • المخرجات في: {Config.TRANSLATED_AR_DIR.resolve()}")
     print("=" * 70)
 
 
 if __name__ == "__main__":
     run_pipeline()
+

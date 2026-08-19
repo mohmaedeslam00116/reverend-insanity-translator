@@ -4,27 +4,23 @@ on:
   workflow_dispatch:
     inputs:
       start_chapter:
-        description: 'رقم فصل البداية (اتركه فارغاً للاستئناف التلقائي)'
-        required: false
-        default: ''
-      end_chapter:
-        description: 'رقم فصل النهاية (اتركه فارغاً للاستئناف التلقائي)'
-        required: false
-        default: ''
-      batch_size:
-        description: 'عدد الفصول المراد معالجتها في هذه الجلسة'
-        required: false
-        default: '100'
-      engine:
-        description: 'محرك الترجمة: fast (سريع جداً ومجاني) أو ai (ذكاء اصطناعي)'
-        required: false
-        default: 'fast'
-      delay_seconds:
-        description: 'الفاصل الزمني بالثواني'
+        description: 'رقم فصل البداية'
         required: false
         default: '1'
+      end_chapter:
+        description: 'رقم فصل النهاية'
+        required: false
+        default: '2334'
+      scrape_delay:
+        description: 'تأخير السحب بالثواني لمنع الحظر'
+        required: false
+        default: '1.5'
+      translate_delay:
+        description: 'تأخير الترجمة بالثواني'
+        required: false
+        default: '0.5'
   schedule:
-    # يعمل تلقائياً كل ساعة في السحابة لمواصلة الترجمة من حيث توقفت
+    # يعمل تلقائياً كل ساعة لمتابعة السحب والترجمة
     - cron: '0 * * * *'
 
 permissions:
@@ -33,7 +29,7 @@ permissions:
 jobs:
   translate:
     runs-on: ubuntu-latest
-    timeout-minutes: 350
+    timeout-minutes: 355 # حتى 6 ساعات متواصلة
 
     steps:
       - name: Checkout Repository
@@ -52,41 +48,20 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run Cloud Translation Pipeline
-        env:
-          KILO_API_KEY: ${{ secrets.KILO_API_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbnYiOiJwcm9kdWN0aW9uIiwia2lsb1VzZXJJZCI6IjNhYTY0YWJiLTYyOWItNDU4Yy05MDk0LWRmMDA0YmFjZDQ4ZiIsImFwaVRva2VuUGVwcGVyIjoiMTBkMjA2NDQtNDljMy00MDZjLWIxOTktYjE4MTEwYzQ4MjhlIiwidmVyc2lvbiI6MywiaWF0IjoxNzg3MDk1MzMzLCJleHAiOjE5NDQ3NzUzMzN9.PnBR71HRHyp3dBbBDlRKbjNIezhHya8RthHuL4iHExs' }}
-          KILO_MODEL: 'stepfun/step-3.7-flash:free'
-          CHUNK_SIZE_PARAGRAPHS: '30'
+      - name: Run Full Pipeline (Scrape All First, Then Translate All)
         run: |
-          START_ARG=""
-          END_ARG=""
-          BATCH_ARG="--batch-size 100"
-          ENGINE_ARG="--engine fast"
-          DELAY_ARG="--delay 1"
+          START_VAL="${{ github.event.inputs.start_chapter }}"
+          END_VAL="${{ github.event.inputs.end_chapter }}"
+          S_DELAY="${{ github.event.inputs.scrape_delay }}"
+          T_DELAY="${{ github.event.inputs.translate_delay }}"
 
-          if [ -n "${{ github.event.inputs.start_chapter }}" ]; then
-            START_ARG="--start ${{ github.event.inputs.start_chapter }}"
-          fi
+          START_ARG=${START_VAL:+--start $START_VAL}
+          END_ARG=${END_VAL:+--end $END_VAL}
+          S_DELAY_ARG=${S_DELAY:+--scrape-delay $S_DELAY}
+          T_DELAY_ARG=${T_DELAY:+--delay $T_DELAY}
 
-          if [ -n "${{ github.event.inputs.end_chapter }}" ]; then
-            END_ARG="--end ${{ github.event.inputs.end_chapter }}"
-          fi
-
-          if [ -n "${{ github.event.inputs.batch_size }}" ]; then
-            BATCH_ARG="--batch-size ${{ github.event.inputs.batch_size }}"
-          fi
-
-          if [ -n "${{ github.event.inputs.engine }}" ]; then
-            ENGINE_ARG="--engine ${{ github.event.inputs.engine }}"
-          fi
-
-          if [ -n "${{ github.event.inputs.delay_seconds }}" ]; then
-            DELAY_ARG="--delay ${{ github.event.inputs.delay_seconds }}"
-          fi
-
-          echo "Running command: python -u main.py --auto $START_ARG $END_ARG $BATCH_ARG $ENGINE_ARG $DELAY_ARG"
-          python -u main.py --auto $START_ARG $END_ARG $BATCH_ARG $ENGINE_ARG $DELAY_ARG
-          python compile_novel.py
+          echo "Running two-phase pipeline..."
+          python -u main.py $START_ARG $END_ARG $S_DELAY_ARG $T_DELAY_ARG --engine fast
 
       - name: Commit and Push Translated Chapters
         if: always()
@@ -95,5 +70,5 @@ jobs:
           git config --local user.name "GitHub Action Bot"
           git pull --rebase origin main || true
           git add output/
-          git commit -m "Auto-translated chapters: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" || echo "No changes to commit"
+          git commit -m "Auto-update: Scraped & Translated chapters $(date -u '+%Y-%m-%d %H:%M:%S UTC')" || echo "No changes to commit"
           git push origin main || echo "Push failed or nothing to push"
