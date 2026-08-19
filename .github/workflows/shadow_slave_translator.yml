@@ -1,0 +1,59 @@
+name: Shadow Slave Translator Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      start_chapter:
+        description: 'Start Chapter Number (رقم فصل البداية)'
+        required: false
+        default: '1'
+      end_chapter:
+        description: 'End Chapter Number (رقم فصل النهاية)'
+        required: false
+        default: '100'
+      workers:
+        description: 'Parallel Threads (عدد المسارات المتوازية)'
+        required: false
+        default: '15'
+
+permissions:
+  contents: write
+
+jobs:
+  shadow_slave_pipeline:
+    name: 🛡️ Shadow Slave Scrape & Translate
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🐍 Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: 📦 Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests beautifulsoup4
+
+      - name: 🚀 Run Shadow Slave Pipeline
+        run: |
+          python novels/shadow_slave_pipeline.py --start ${{ github.event.inputs.start_chapter || '1' }} --end ${{ github.event.inputs.end_chapter || '100' }} --workers ${{ github.event.inputs.workers || '15' }}
+
+      - name: 💾 Commit & Push Translated Chapters & Glossary
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add novels/shadow-slave/
+          if git diff --staged --quiet; then
+            echo "No new chapters to commit."
+          else
+            git commit -m "feat(shadow-slave): translate chapters ${{ github.event.inputs.start_chapter }}-${{ github.event.inputs.end_chapter }}, update glossary & master book [skip ci]"
+            git push origin main
+          fi
