@@ -1,0 +1,90 @@
+name: Reverend Insanity Auto-Translator 24/7
+
+on:
+  workflow_dispatch:
+    inputs:
+      start_chapter:
+        description: 'رقم فصل البداية (اتركه فارغاً للاستئناف التلقائي)'
+        required: false
+        default: ''
+      end_chapter:
+        description: 'رقم فصل النهاية (اتركه فارغاً للاستئناف التلقائي)'
+        required: false
+        default: ''
+      batch_size:
+        description: 'عدد الفصول المراد معالجتها في هذه الجلسة'
+        required: false
+        default: '30'
+      delay_seconds:
+        description: 'الفاصل الزمني بالثواني (تأخير آمن)'
+        required: false
+        default: '15'
+  schedule:
+    # يعمل تلقائياً كل 30 دقيقة في السحابة لمواصلة الترجمة من حيث توقفت
+    - cron: '*/30 * * * *'
+
+permissions:
+  contents: write
+
+jobs:
+  translate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Cloud Translation Pipeline
+        env:
+          KILO_API_KEY: ${{ secrets.KILO_API_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbnYiOiJwcm9kdWN0aW9uIiwia2lsb1VzZXJJZCI6IjNhYTY0YWJiLTYyOWItNDU4Yy05MDk0LWRmMDA0YmFjZDQ4ZiIsImFwaVRva2VuUGVwcGVyIjoiMTBkMjA2NDQtNDljMy00MDZjLWIxOTktYjE4MTEwYzQ4MjhlIiwidmVyc2lvbiI6MywiaWF0IjoxNzg3MDk1MzMzLCJleHAiOjE5NDQ3NzUzMzN9.PnBR71HRHyp3dBbBDlRKbjNIezhHya8RthHuL4iHExs' }}
+          KILO_MODEL: 'stepfun/step-3.7-flash:free'
+          CHUNK_SIZE_PARAGRAPHS: '100'
+        run: |
+          START_ARG=""
+          END_ARG=""
+          BATCH_ARG="--batch-size 30"
+          DELAY_ARG="--delay 15"
+
+          if [ -n "${{ github.event.inputs.start_chapter }}" ]; then
+            START_ARG="--start ${{ github.event.inputs.start_chapter }}"
+          fi
+
+          if [ -n "${{ github.event.inputs.end_chapter }}" ]; then
+            END_ARG="--end ${{ github.event.inputs.end_chapter }}"
+          fi
+
+          if [ -n "${{ github.event.inputs.batch_size }}" ]; then
+            BATCH_ARG="--batch-size ${{ github.event.inputs.batch_size }}"
+          fi
+
+          if [ -n "${{ github.event.inputs.delay_seconds }}" ]; then
+            DELAY_ARG="--delay ${{ github.event.inputs.delay_seconds }}"
+          fi
+
+          echo "Running command: python -u main.py --auto $START_ARG $END_ARG $BATCH_ARG $DELAY_ARG"
+          python -u main.py --auto $START_ARG $END_ARG $BATCH_ARG $DELAY_ARG
+          python compile_novel.py
+
+      - name: Commit and Push Translated Chapters
+        if: always()
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action Bot"
+          git pull --rebase origin main || true
+          git add output/
+          git commit -m "Auto-translated chapters: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" || echo "No changes to commit"
+          git push origin main || echo "Push failed or nothing to push"
