@@ -1,0 +1,89 @@
+name: 🌟 Kilo AI Literary Translator
+
+on:
+  workflow_dispatch:
+    inputs:
+      novel:
+        description: 'Novel Slug (معرف الرواية مثل reverend-insanity أو shadow-slave)'
+        required: true
+        default: 'reverend-insanity'
+      model:
+        description: 'AI Model (نموذج الذكاء الاصطناعي الأدبي)'
+        required: true
+        default: 'stepfun/step-3.7-flash:free'
+        type: choice
+        options:
+          - 'stepfun/step-3.7-flash:free'
+          - 'meta-llama/llama-3.3-70b-instruct:free'
+          - 'deepseek/deepseek-r1:free'
+      start_chapter:
+        description: 'Start Chapter (فصل البداية)'
+        required: false
+        default: '1'
+      end_chapter:
+        description: 'End Chapter (فصل النهاية)'
+        required: false
+        default: '20'
+      workers:
+        description: 'Concurrent Threads (المسارات المتزامنة: يُنصح بـ 3)'
+        required: false
+        default: '3'
+      overwrite:
+        description: 'Overwrite & Clean Old (استبدال الترجمة القديمة)'
+        type: boolean
+        required: false
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  kilo_literary_translation:
+    name: 🌟 Kilo AI Literary Translation
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🐍 Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: 📦 Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests beautifulsoup4
+
+      - name: 🚀 Run Kilo Literary Pipeline
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          OVERWRITE_FLAG=""
+          if [ "${{ github.event.inputs.overwrite }}" = "true" ]; then
+            OVERWRITE_FLAG="--overwrite"
+          fi
+          python kilo_novel_translator.py \
+            --novel "${{ github.event.inputs.novel || 'reverend-insanity' }}" \
+            --model "${{ github.event.inputs.model || 'stepfun/step-3.7-flash:free' }}" \
+            --start ${{ github.event.inputs.start_chapter || '1' }} \
+            --end ${{ github.event.inputs.end_chapter || '20' }} \
+            --workers ${{ github.event.inputs.workers || '3' }} \
+            $OVERWRITE_FLAG
+
+      - name: 💾 Commit & Push Literary Chapters
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add novels/${{ github.event.inputs.novel || 'reverend-insanity' }}/
+          if git diff --staged --quiet; then
+            echo "No new chapters to commit."
+          else
+            git commit -m "feat(literary): translate chapters ${{ github.event.inputs.start_chapter }}-${{ github.event.inputs.end_chapter }} of ${{ github.event.inputs.novel }} via Kilo AI [skip ci]"
+            git push origin main
+          fi
