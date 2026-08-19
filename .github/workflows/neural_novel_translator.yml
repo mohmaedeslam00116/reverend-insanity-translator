@@ -69,6 +69,8 @@ jobs:
           pip install transformers sentencepiece sacremoses beautifulsoup4 requests
 
       - name: 🚀 Run Neural Pipeline
+        env:
+          PYTHONUNBUFFERED: "1"
         run: |
           OVERWRITE_FLAG=""
           if [ "${{ github.event.inputs.overwrite }}" = "true" ]; then

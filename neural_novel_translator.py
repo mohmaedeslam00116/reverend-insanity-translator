@@ -40,23 +40,26 @@ class NeuralEngine:
         self._load_model()
 
     def _load_model(self):
-        print(f"[NeuralEngine] ⏳ جاري تحميل نموذج الترجمة العصبي ({self.model_name})...")
+        print(f"[NeuralEngine] ⏳ جاري تحميل نموذج الترجمة العصبي ({self.model_name})...", flush=True)
         t0 = time.time()
         from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
         import torch
+
+        # Use all CPU cores
+        torch.set_num_threads(os.cpu_count() or 4)
 
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
         self.model = AutoModelForSeq2SeqLM.from_pretrained(self.model_name)
 
         if self.device == "cuda" and torch.cuda.is_available():
             self.model = self.model.to("cuda")
-            print("[NeuralEngine] 🚀 تم التفعيل على كرت الشاشة (CUDA GPU)!")
+            print("[NeuralEngine] 🚀 تم التفعيل على كرت الشاشة (CUDA GPU)!", flush=True)
         else:
             self.model = self.model.to("cpu")
-            print("[NeuralEngine] ⚡ تم التفعيل على المعالج (CPU)!")
+            print(f"[NeuralEngine] ⚡ تم التفعيل على المعالج ({os.cpu_count() or 4} Cores CPU)!", flush=True)
 
         self.model.eval()
-        print(f"[NeuralEngine] ✓ تم تجهيز النموذج في {time.time() - t0:.2f} ثانية.")
+        print(f"[NeuralEngine] ✓ تم تجهيز النموذج في {time.time() - t0:.2f} ثانية.", flush=True)
 
     def translate_batch(self, texts: List[str], batch_size: int = 16) -> List[str]:
         """Translate a batch of sentences/paragraphs using vectorized tensor batches."""
@@ -77,15 +80,16 @@ class NeuralEngine:
                         return_tensors="pt",
                         padding=True,
                         truncation=True,
-                        max_length=512,
+                        max_length=256,
                     ).to(self.model.device)
                     forced_bos_token_id = self.tokenizer.convert_tokens_to_ids("arb_Arab")
                     with torch.no_grad():
                         translated_tokens = self.model.generate(
                             **inputs,
                             forced_bos_token_id=forced_bos_token_id,
-                            max_length=512,
-                            num_beams=2,
+                            max_length=256,
+                            num_beams=1,
+                            do_sample=False,
                         )
                 else:
                     inputs = self.tokenizer(
@@ -93,13 +97,14 @@ class NeuralEngine:
                         return_tensors="pt",
                         padding=True,
                         truncation=True,
-                        max_length=512,
+                        max_length=256,
                     ).to(self.model.device)
                     with torch.no_grad():
                         translated_tokens = self.model.generate(
                             **inputs,
-                            max_length=512,
-                            num_beams=2,
+                            max_length=256,
+                            num_beams=1,
+                            do_sample=False,
                         )
 
                 decoded = self.tokenizer.batch_decode(
@@ -107,7 +112,7 @@ class NeuralEngine:
                 )
                 results.extend(decoded)
             except Exception as e:
-                print(f"[NeuralEngine Error] {e}")
+                print(f"[NeuralEngine Error] {e}", flush=True)
                 results.extend(chunk)
 
         return results
@@ -293,12 +298,12 @@ class NeuralNovelPipeline:
 
             tc_elapsed = time.time() - tc0
             success_count += 1
-            print(f"  [✓ ترجمة عصبية] الفصل {cnum:>4}: {trans_title[:35]}... ({len(paragraphs)} فقرة | {tc_elapsed:.1f}ث)")
+            print(f"  [✓ ترجمة عصبية] الفصل {cnum:>4}: {trans_title[:35]}... ({len(paragraphs)} فقرة | {tc_elapsed:.1f}ث)", flush=True)
 
         elapsed_total = time.time() - t0
-        print("\n" + "=" * 80)
-        print(f" 🏆 اكتملت الترجمة العصبية بنجاح: {success_count} فصل في {elapsed_total:.1f} ثانية")
-        print("=" * 80)
+        print("\n" + "=" * 80, flush=True)
+        print(f" 🏆 اكتملت الترجمة العصبية بنجاح: {success_count} فصل في {elapsed_total:.1f} ثانية", flush=True)
+        print("=" * 80, flush=True)
 
     def compile_master(self) -> Path:
         """Compile translated chapters into master book."""
