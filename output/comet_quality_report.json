@@ -1,0 +1,92 @@
+{
+  "model": "Unbabel/wmt20-comet-qe-da",
+  "average_score": -54.23,
+  "verdict": "مقبولة وتتطلب بعض التحسينات (Needs Review)",
+  "chapters_evaluated": 3,
+  "details": [
+    {
+      "chapter": 1,
+      "status": "success",
+      "comet_score": -41.0,
+      "raw_comet_system_score": -0.4104,
+      "paragraphs_evaluated": 47,
+      "low_quality_count": 46,
+      "low_quality_samples": [
+        {
+          "paragraph_index": 1,
+          "score": -22.9,
+          "src": "\"Fang Yuan, quietly hand over the Spring Autumn Cicada and I'll give you a quick death!\"...",
+          "mt": "«فانغ يوان، اسلم زيز الربيع والخريف دون ضجيج، وسأمنحك موتًا سريعًا!»..."
+        },
+        {
+          "paragraph_index": 2,
+          "score": -1.4,
+          "src": "\"Old bastard Fang, stop attempting to resist anymore, today all of the major factions of justice have combined together just to destroy your devil lai...",
+          "mt": "«أيها الشيخ الخبيث فانغ، توقف عن محاولة المقاومة بعد اليوم، لقد تحالفت جميع الفصائل الكبرى للعدالة اليوم فقط لتدمير عرينك الشيطاني. هذا المكان محاصر ف..."
+        },
+        {
+          "paragraph_index": 3,
+          "score": -14.4,
+          "src": "\"Fang Yuan you damn demon, just because you wanted to cultivate the Spring Autumn Cicada, you've gone and killed thousands of people. You've committed...",
+          "mt": "«أيها الشيطان الملعون فانغ يوان، لمجرد رغبتك في صقل زيز الربيع والخريف، ذهبت وقتلت آلاف الأشخاص. لقد ارتكبت ذنوبًا فظيعة لا تغتفر أكثر من اللزوم!»..."
+        }
+      ]
+    },
+    {
+      "chapter": 2,
+      "status": "success",
+      "comet_score": -43.9,
+      "raw_comet_system_score": -0.4393,
+      "paragraphs_evaluated": 65,
+      "low_quality_count": 64,
+      "low_quality_samples": [
+        {
+          "paragraph_index": 1,
+          "score": -8.5,
+          "src": "It was said in legend that a river of time existed in this world. It supported the world's time flow and circulation. And by using the Spring Autumn C...",
+          "mt": "كان يروى في الأساطير أن في هذا العالم نهرًا للزمن، يقوم بدعم تدفق الزمن ودورانه في العالم، ويمكن لمن يمتلك قوة زيز الربيع والخريف أن يسافر عكس التيار ..."
+        },
+        {
+          "paragraph_index": 3,
+          "score": 25.4,
+          "src": "Few people actually dared to believe it....",
+          "mt": "وقليلون فقط تجرأوا حقًا على تصديقها...."
+        },
+        {
+          "paragraph_index": 4,
+          "score": -24.8,
+          "src": "Because every time one used the Spring Autumn Cicada, one had to pay with their life, letting their entire body and cultivation be the driving force t...",
+          "mt": "ذلك أن كل من يستخدم زيز الربيع والخريف يجب أن يدفع ثمنه بحياته، ويجعل جسده وزراعته كلها وقودًا لتشغيل قوته الخاصة...."
+        }
+      ]
+    },
+    {
+      "chapter": 3,
+      "status": "success",
+      "comet_score": -77.8,
+      "raw_comet_system_score": -0.7783,
+      "paragraphs_evaluated": 51,
+      "low_quality_count": 51,
+      "low_quality_samples": [
+        {
+          "paragraph_index": 1,
+          "score": -29.5,
+          "src": "Bang, Bang, Bang....",
+          "mt": "طَش.. طَش.. طَش....."
+        },
+        {
+          "paragraph_index": 2,
+          "score": -112.2,
+          "src": "The patrolling night watchman banged his wooden clappers in a rhythm....",
+          "mt": "الْحَارِسُ اللَّيْلِيُّ الْمُتَجَوِّلُ يَضْرِبُ مَطَارِقَهُ الْخَشَبِيَّةَ عَلَى نَغَمٍ مُنْتَظَمٍ...."
+        },
+        {
+          "paragraph_index": 3,
+          "score": -92.5,
+          "src": "The sound spread into the high pillar houses; Fang Yuan opened his dry eyelids while his heart silently thought, It's already the hour before dawn....",
+          "mt": "امْتَدَّ الصَّوْتُ إِلَى بُيُوتِ الْأَعْمِدَةِ الْعَالِيَةِ؛ فَتَحَ فَانْغ يوان جَفْنَهُ الْيَابِسَ، وَقَدْ هَمَسَ قَلْبُهُ فِي دَاخِلِهِ: «قَدْ حَانَ..."
+        }
+      ]
+    }
+  ]
+}
