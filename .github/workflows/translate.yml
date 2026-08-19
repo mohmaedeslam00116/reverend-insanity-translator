@@ -60,8 +60,8 @@ jobs:
           S_DELAY_ARG=${S_DELAY:+--scrape-delay $S_DELAY}
           T_DELAY_ARG=${T_DELAY:+--delay $T_DELAY}
 
-          echo "Running two-phase pipeline..."
-          python -u main.py $START_ARG $END_ARG $S_DELAY_ARG $T_DELAY_ARG --engine fast
+          echo "Running two-phase pipeline with 15 parallel workers..."
+          python -u main.py $START_ARG $END_ARG $S_DELAY_ARG --engine fast --workers 15
 
       - name: Commit and Push Translated Chapters
         if: always()

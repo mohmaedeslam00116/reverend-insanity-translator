@@ -8,7 +8,14 @@ def compile_translated_chapters(output_filename: str = "Reverend_Insanity_Arabic
     Combines all individual translated chapter files into a single ordered book file.
     """
     Config.init_directories()
-    chapter_files = sorted(Config.TRANSLATED_AR_DIR.glob("chapter_*.txt"))
+    import re
+    raw_files = list(Config.TRANSLATED_AR_DIR.rglob("chapter_*.txt"))
+
+    def get_cnum(f):
+        m = re.search(r"chapter_(\d+)", f.name)
+        return int(m.group(1)) if m else 999999
+
+    chapter_files = sorted(raw_files, key=get_cnum)
 
     if not chapter_files:
         print("[!] لم يتم العثور على فصول مترجمة لدمجها.")

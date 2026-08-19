@@ -98,10 +98,10 @@ def parse_args():
         help="محرك الترجمة: 'fast' (ترجمة جوجل فائقة السرعة مع مصطلحات الرواية) أو 'ai' (ترجمة أدبية عبر نماذج الذكاء الاصطناعي)",
     )
     parser.add_argument(
-        "-d", "--delay",
-        type=float,
-        default=2.0,
-        help="الفاصل الزمني بالثواني بين كل فصل والآخر (الافتراضي مع المحرك السريع: 2 ثانية)",
+        "-w", "--workers",
+        type=int,
+        default=1,
+        help="عدد المسارات المتوازية للترجمة (مثال: 10 أو 15 مساراً لتسريع الترجمة 10 أضعاف)",
     )
     parser.add_argument(
         "-m", "--model",
@@ -210,6 +210,12 @@ def run_pipeline():
     # =========================================================================
     # PHASE 2: TRANSLATING ALL SCRAPED CHAPTERS (ترجمة الفصول المسحوبة بالكامل)
     # =========================================================================
+    if args.workers > 1 and args.engine == "fast":
+        from parallel_translator import ParallelNovelTranslator
+        p_translator = ParallelNovelTranslator(max_workers=args.workers)
+        p_translator.run_parallel(start_chapter=start_chap, end_chapter=end_chap)
+        return
+
     print("=" * 70)
     print(" 🌐 [المرحلة الثانية] ترجمة الفصول وحفظها بالعربية الفصحى")
     print("=" * 70)
