@@ -15,7 +15,7 @@ def audit_translated_chapters():
     4. Glossary consistency.
     """
     Config.init_directories()
-    trans_files = sorted(Config.TRANSLATED_AR_DIR.glob("chapter_*.txt"))
+    trans_files = sorted(Config.TRANSLATED_AR_DIR.rglob("chapter_*.txt"))
 
     if not trans_files:
         print("[!] لم يتم العثور على فصول مترجمة لفحصها.")
@@ -35,7 +35,10 @@ def audit_translated_chapters():
         except ValueError:
             continue
 
-        raw_file = Config.RAW_EN_DIR / f"chapter_{cnum:04d}.txt"
+        from organize_volumes import get_volume_dir
+        raw_file = get_volume_dir(Config.RAW_EN_DIR, cnum) / f"chapter_{cnum:04d}.txt"
+        if not raw_file.exists():
+            raw_file = Config.RAW_EN_DIR / f"chapter_{cnum:04d}.txt"
 
         with open(cfile, "r", encoding="utf-8") as f:
             trans_text = f.read()
