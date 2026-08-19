@@ -49,6 +49,8 @@ class NeuralEngine:
         torch.set_num_threads(os.cpu_count() or 4)
 
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+        if self.is_nllb:
+            self.tokenizer.src_lang = "eng_Latn"
         self.model = AutoModelForSeq2SeqLM.from_pretrained(self.model_name)
 
         if self.device == "cuda" and torch.cuda.is_available():
