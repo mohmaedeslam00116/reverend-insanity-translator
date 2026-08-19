@@ -1,0 +1,85 @@
+name: 🧠 Neural Novel Translator (OPUS-MT & NLLB-200)
+
+on:
+  workflow_dispatch:
+    inputs:
+      novel:
+        description: 'Novel Slug (معرف الرواية مثل shadow-slave أو reverend-insanity)'
+        required: true
+        default: 'shadow-slave'
+      model:
+        description: 'Neural Model (النموذج العصبي)'
+        required: true
+        default: 'Helsinki-NLP/opus-mt-en-ar'
+        type: choice
+        options:
+          - 'Helsinki-NLP/opus-mt-en-ar'
+          - 'facebook/nllb-200-distilled-600M'
+      start_chapter:
+        description: 'Start Chapter (فصل البداية)'
+        required: false
+        default: '1'
+      end_chapter:
+        description: 'End Chapter (فصل النهاية)'
+        required: false
+        default: '50'
+      batch_size:
+        description: 'Tensor Batch Size (حجم دفعة المعالجة)'
+        required: false
+        default: '16'
+
+permissions:
+  contents: write
+
+jobs:
+  neural_translation:
+    name: 🧠 Neural In-Memory Translation
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🐍 Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: 📦 Cache HuggingFace Models
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-models-${{ github.event.inputs.model || 'Helsinki-NLP/opus-mt-en-ar' }}
+          restore-keys: |
+            hf-models-
+
+      - name: ⚡ Install Lightweight Neural Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+          pip install transformers sentencepiece sacremoses beautifulsoup4 requests
+
+      - name: 🚀 Run Neural Pipeline
+        run: |
+          python neural_novel_translator.py \
+            --novel "${{ github.event.inputs.novel || 'shadow-slave' }}" \
+            --model "${{ github.event.inputs.model || 'Helsinki-NLP/opus-mt-en-ar' }}" \
+            --start ${{ github.event.inputs.start_chapter || '1' }} \
+            --end ${{ github.event.inputs.end_chapter || '50' }} \
+            --batch-size ${{ github.event.inputs.batch_size || '16' }}
+
+      - name: 💾 Commit & Push Translated Chapters
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add novels/${{ github.event.inputs.novel || 'shadow-slave' }}/
+          if git diff --staged --quiet; then
+            echo "No new chapters to commit."
+          else
+            git commit -m "feat(neural): translate chapters ${{ github.event.inputs.start_chapter }}-${{ github.event.inputs.end_chapter }} of ${{ github.event.inputs.novel }} via ${{ github.event.inputs.model }} [skip ci]"
+            git push origin main
+          fi
