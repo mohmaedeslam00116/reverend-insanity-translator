@@ -4,8 +4,14 @@
 End-to-end scraper, terminology builder, and parallel translator for
 Shadow Slave by Guiltythree.
 
+Features:
+  - Robust urllib scraping with anti-blocking headers & exponential backoff
+  - Comprehensive Shadow Slave glossary integration & auto-discovery
+  - Volume organization & Master book compilation
+  - Progress checkpointing for seamless cloud runs
+
 Usage:
-  python novels/shadow_slave_pipeline.py --start 1 --end 50 --workers 10
+  python novels/shadow_slave_pipeline.py --start 1 --end 2500 --workers 5
   python novels/shadow_slave_pipeline.py --extract-glossary
   python novels/shadow_slave_pipeline.py --compile
 """
@@ -18,11 +24,10 @@ import time
 import argparse
 import urllib.request
 import urllib.parse
+import urllib.error
 from pathlib import Path
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
-
-import requests
 from bs4 import BeautifulSoup
 
 if sys.platform == "win32":
@@ -35,7 +40,7 @@ if sys.platform == "win32":
 # Add parent directory to sys.path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from novels.shadow_slave_glossary import ShadowSlaveGlossary, SHADOW_SLAVE_CANON_GLOSSARY
+from novels.shadow_slave_glossary import ShadowSlaveGlossary
 
 
 VOLUME_RANGES = [
@@ -44,7 +49,7 @@ VOLUME_RANGES = [
     (601, 750, "Volume_3 (Second Nightmare - Chapters 0601 - 0750)"),
     (751, 1200, "Volume_4 (Antarctica - Chapters 0751 - 1200)"),
     (1201, 1600, "Volume_5 (Third Nightmare - Chapters 1201 - 1600)"),
-    (1601, 2500, "Volume_6 (War of the Domains - Chapters 1601+)"),
+    (1601, 3000, "Volume_6 (War of the Domains - Chapters 1601+)"),
 ]
 
 
@@ -61,10 +66,21 @@ def get_volume_dir(base_dir: Path, chapter_num: int) -> Path:
 
 class ShadowSlavePipeline:
     """
-    Dedicated parallel pipeline for Shadow Slave.
+    Dedicated robust parallel pipeline for Shadow Slave.
     """
 
     NOVEL_URL = "https://novelfire.net/book/shadow-slave"
+
+    AD_PATTERNS = [
+        re.compile(r"if you find any errors", re.I),
+        re.compile(r"please let us know", re.I),
+        re.compile(r"ads redirect", re.I),
+        re.compile(r"visit novelfire", re.I),
+        re.compile(r"patreon\.com", re.I),
+        re.compile(r"discord\.gg", re.I),
+        re.compile(r"read latest chapters at", re.I),
+        re.compile(r"lightnovelpub", re.I),
+    ]
 
     def __init__(self, output_dir: Path = Path("novels/shadow-slave")):
         self.novel_dir = output_dir
@@ -87,50 +103,58 @@ class ShadowSlavePipeline:
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                 "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
             ),
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
             "Accept-Language": "en-US,en;q=0.9",
+            "Referer": "https://novelfire.net/book/shadow-slave",
+            "DNT": "1",
+            "Connection": "keep-alive",
         }
 
-    def fetch_chapter(self, chapter_num: int, max_retries: int = 4) -> Dict[str, Any]:
-        """Fetch raw chapter from NovelFire."""
+    def fetch_chapter(self, chapter_num: int, max_retries: int = 5) -> Dict[str, Any]:
+        """Fetch raw chapter using urllib with retry and backoff."""
         url = f"{self.NOVEL_URL}/chapter-{chapter_num}"
 
         for attempt in range(1, max_retries + 1):
             try:
-                resp = requests.get(url, headers=self.headers, timeout=20)
-                if resp.status_code == 200:
-                    soup = BeautifulSoup(resp.text, "html.parser")
-                    title_tag = (
-                        soup.find("span", class_="chapter-title")
-                        or soup.find("h1")
-                        or soup.find("h2")
-                    )
-                    title = title_tag.get_text(strip=True) if title_tag else f"Chapter {chapter_num}"
+                req = urllib.request.Request(url, headers=self.headers)
+                with urllib.request.urlopen(req, timeout=20) as resp:
+                    charset = resp.headers.get_content_charset() or "utf-8"
+                    html = resp.read().decode(charset, errors="ignore")
 
-                    content_div = (
-                        soup.find("div", id="chapter-container")
-                        or soup.find("div", class_="chapter-content")
-                        or soup.find("div", class_="content")
-                    )
-                    if not content_div:
-                        return {"status": "error", "error": "Content container missing"}
+                soup = BeautifulSoup(html, "html.parser")
+                title_tag = (
+                    soup.find("span", class_="chapter-title")
+                    or soup.find("h1")
+                    or soup.find("h2")
+                )
+                title = title_tag.get_text(strip=True) if title_tag else f"Chapter {chapter_num}"
 
-                    paragraphs = []
-                    for p in content_div.find_all("p"):
-                        txt = p.get_text(strip=True)
-                        if txt and not any(
-                            ad in txt.lower()
-                            for ad in ["novelfire", "patreon", "discord", "lightnovelpub"]
-                        ):
-                            paragraphs.append(txt)
+                content_div = (
+                    soup.find("div", id="chapter-container")
+                    or soup.find("div", class_="chapter-content")
+                    or soup.find("div", class_="content")
+                )
+                if not content_div:
+                    return {"status": "error", "error": "Content container missing"}
 
-                    return {
-                        "status": "success",
-                        "chapter": chapter_num,
-                        "title": title,
-                        "paragraphs": paragraphs,
-                    }
-                elif resp.status_code == 404:
+                paragraphs = []
+                for p in content_div.find_all("p"):
+                    txt = p.get_text(strip=True)
+                    if txt and not any(pat.search(txt) for pat in self.AD_PATTERNS):
+                        paragraphs.append(txt)
+
+                return {
+                    "status": "success",
+                    "chapter": chapter_num,
+                    "title": title,
+                    "paragraphs": paragraphs,
+                }
+
+            except urllib.error.HTTPError as e:
+                if e.code == 404:
                     return {"status": "not_found", "chapter": chapter_num}
+                elif e.code == 429 or e.code == 503:
+                    time.sleep(3.0 * attempt)
                 else:
                     time.sleep(1.5 * attempt)
             except Exception as e:
@@ -139,7 +163,7 @@ class ShadowSlavePipeline:
         return {"status": "error", "chapter": chapter_num, "error": "Max retries exceeded"}
 
     def translate_text_block(self, text: str) -> str:
-        """Translate a single block using Google Translate GTX endpoint."""
+        """Translate a single block using Google Translate endpoint."""
         if not text.strip():
             return ""
         try:
@@ -183,7 +207,7 @@ class ShadowSlavePipeline:
         # 1. Scrape raw if missing
         paragraphs = []
         title = f"Chapter {chapter_num}"
-        if raw_file.exists():
+        if raw_file.exists() and raw_file.stat().st_size > 50:
             with open(raw_file, "r", encoding="utf-8") as f:
                 lines = f.readlines()
             if lines:
@@ -238,10 +262,10 @@ class ShadowSlavePipeline:
             "paragraphs": len(translated_paragraphs),
         }
 
-    def run_parallel_pipeline(self, start: int, end: int, max_workers: int = 10):
+    def run_parallel_pipeline(self, start: int, end: int, max_workers: int = 5):
         """Run scraping and translation across multiple chapters in parallel."""
         print("=" * 80)
-        print(" 🛡️ خط إنتاج وترجمة رواية عبد الظل (Shadow Slave) فائق السرعة")
+        print(" 🛡️ خط إنتاج وترجمة رواية عبد الظل (Shadow Slave) الشامل")
         print("=" * 80)
         print(f" • نطاق الفصول: من الفصل {start} إلى الفصل {end} ({end - start + 1} فصل)")
         print(f" • المسارات المتوازية (Threads): {max_workers}")
@@ -253,6 +277,7 @@ class ShadowSlavePipeline:
         success_count = 0
         skipped_count = 0
         error_count = 0
+        not_found_streak = 0
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_map = {
@@ -267,20 +292,29 @@ class ShadowSlavePipeline:
 
                 if status == "success":
                     success_count += 1
+                    not_found_streak = 0
                     print(f"  [✓ تم الترجمة] الفصل {cnum:>4} ({res.get('paragraphs')} فقرة)")
                 elif status == "already_translated":
                     skipped_count += 1
+                    not_found_streak = 0
+                elif status == "not_found":
+                    not_found_streak += 1
+                    if not_found_streak >= 10:
+                        print(f"  [⏹️ نهاية الرواية] تم الوصول لنهاية الفصول المنشورة عند الفصل {cnum}.")
+                        break
                 else:
                     error_count += 1
                     print(f"  [❌ فشل] الفصل {cnum:>4}: {res.get('error')}")
 
-                if done % 20 == 0 or done == len(chapters):
+                if done % 25 == 0 or done == len(chapters):
                     elapsed = time.time() - t0
-                    print(f"   ⏳ تقدم: {done}/{len(chapters)} ({done/len(chapters)*100:.0f}%) | {elapsed:.1f}ث")
+                    speed = (success_count + skipped_count) / elapsed if elapsed > 0 else 0
+                    print(f"   ⏳ تقدم: {done}/{len(chapters)} ({done/len(chapters)*100:.0f}%) | {speed:.1f} فصل/ثانية | {elapsed:.1f}ث")
 
         elapsed_total = time.time() - t0
 
         # Update glossary with new terms
+        print("\n[Glossary] جاري استخراج وتحديث المصطلحات من كافة الفصول المسحوبة...")
         self.glossary_builder.scan_chapters()
         self.glossary_builder.save()
 
@@ -290,7 +324,7 @@ class ShadowSlavePipeline:
         print(f" • الفصول المترجمة حديثاً: {success_count}")
         print(f" • الفصول المترجمة مسبقاً (مكتملة): {skipped_count}")
         print(f" • الأخطاء: {error_count}")
-        print(f" • الزمن الكلي: {elapsed_total:.1f} ثانية")
+        print(f" • الزمن الكلي: {elapsed_total:.1f} ثانية ({elapsed_total/60:.1f} دقيقة)")
         print("=" * 80)
 
     def compile_master(self) -> Path:
@@ -323,8 +357,8 @@ class ShadowSlavePipeline:
 def main():
     parser = argparse.ArgumentParser(description="Shadow Slave Translation Pipeline")
     parser.add_argument("--start", type=int, default=1, help="Start chapter number")
-    parser.add_argument("--end", type=int, default=10, help="End chapter number")
-    parser.add_argument("--workers", type=int, default=10, help="Parallel workers count")
+    parser.add_argument("--end", type=int, default=2500, help="End chapter number")
+    parser.add_argument("--workers", type=int, default=5, help="Parallel workers count")
     parser.add_argument("--extract-glossary", action="store_true", help="Extract glossary only")
     parser.add_argument("--compile", action="store_true", help="Compile master book only")
 

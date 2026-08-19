@@ -8,13 +8,13 @@ on:
         required: false
         default: '1'
       end_chapter:
-        description: 'End Chapter Number (رقم فصل النهاية)'
+        description: 'End Chapter Number (رقم فصل النهاية - الرواية كاملة حتى 2500)'
         required: false
-        default: '100'
+        default: '2500'
       workers:
-        description: 'Parallel Threads (عدد المسارات المتوازية)'
+        description: 'Parallel Threads (عدد المسارات المتوازية: يُنصح بـ 5 لتفادي الحظر)'
         required: false
-        default: '15'
+        default: '5'
 
 permissions:
   contents: write
@@ -44,7 +44,7 @@ jobs:
 
       - name: 🚀 Run Shadow Slave Pipeline
         run: |
-          python novels/shadow_slave_pipeline.py --start ${{ github.event.inputs.start_chapter || '1' }} --end ${{ github.event.inputs.end_chapter || '100' }} --workers ${{ github.event.inputs.workers || '15' }}
+          python novels/shadow_slave_pipeline.py --start ${{ github.event.inputs.start_chapter || '1' }} --end ${{ github.event.inputs.end_chapter || '2500' }} --workers ${{ github.event.inputs.workers || '5' }}
 
       - name: 💾 Commit & Push Translated Chapters & Glossary
         run: |
@@ -54,6 +54,6 @@ jobs:
           if git diff --staged --quiet; then
             echo "No new chapters to commit."
           else
-            git commit -m "feat(shadow-slave): translate chapters ${{ github.event.inputs.start_chapter }}-${{ github.event.inputs.end_chapter }}, update glossary & master book [skip ci]"
+            git commit -m "feat(shadow-slave): translate chapters ${{ github.event.inputs.start_chapter || '1' }}-${{ github.event.inputs.end_chapter || '2500' }}, update glossary & master book [skip ci]"
             git push origin main
           fi
