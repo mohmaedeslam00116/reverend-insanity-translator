@@ -12,7 +12,6 @@
 | `Ancient Soul Sect` | **طائفة الروح القديمة** |
 | `Aperture` | **الفتحة الروحية** |
 | `As Fang Yuan` | **As فانغ يوان** |
-| `Ascending Heaven Plain` | **Ascending السماء Plain** |
 | `Attitude Gu` | **قو الموقف** |
 | `Ba De` | **با De** |
 | `Ba Shi Ba` | **با Shi با** |
@@ -184,6 +183,7 @@
 | `Heaven Path` | **مسار السماء** |
 | `Heaven Refining Demon Venerable` | **السماء Refining شيطان مبجل** |
 | `Heavenly Court` | **المحكمة السماوية** |
+| `Heavenly Court Gu Immortal` | **Heavenly بلاط/محكمة غو خالد** |
 | `Heavenly Court Gu Immortals` | **Heavenly بلاط/محكمة غو Immortals** |
 | `Heavenly Dao` | **Heavenly داو** |
 | `Heavenly Essence Treasure Imperial` | **Heavenly جوهر Treasure Imperial** |
@@ -269,6 +269,7 @@
 | `Long Qing Tian` | **لونغ تشينغ تيان** |
 | `Longevity Heaven` | **سماء طول العمر** |
 | `Lord Sky Crane` | **اللورد الرافعة السماوية** |
+| `Lu Qing Ming` | **لو تشينغ مينغ** |
 | `Lu Tong Lan` | **لو Tong Lan** |
 | `Lu Wei Yin` | **لو وي يين** |
 | `Luck Path` | **مسار الحظ** |
@@ -381,7 +382,6 @@
 | `Shark Demon` | **Shark شيطان** |
 | `Shen Cong Sheng` | **Shen Cong شنغ** |
 | `Shen Shang` | **شن شانغ** |
-| `Shi Wu` | **Shi وو** |
 | `Shi Zheng Yi` | **Shi تشنغ Yi** |
 | `Snowy Mountain` | **Snowy جبل** |
 | `Song Jia Dan` | **سونغ Jia Dan** |
