@@ -1,4 +1,4 @@
-name: Reverend Insanity Auto-Translator 24/7
+name: Reverend Insanity Parallel Translator
 
 on:
   workflow_dispatch:
@@ -11,17 +11,10 @@ on:
         description: 'رقم فصل النهاية'
         required: false
         default: '2334'
-      scrape_delay:
-        description: 'تأخير السحب بالثواني لمنع الحظر'
+      workers:
+        description: 'عدد المسارات المتوازية (Threads)'
         required: false
-        default: '1.5'
-      translate_delay:
-        description: 'تأخير الترجمة بالثواني'
-        required: false
-        default: '0.5'
-  schedule:
-    # يعمل تلقائياً كل ساعة لمتابعة السحب والترجمة
-    - cron: '0 * * * *'
+        default: '20'
 
 permissions:
   contents: write
@@ -29,7 +22,7 @@ permissions:
 jobs:
   translate:
     runs-on: ubuntu-latest
-    timeout-minutes: 355 # حتى 6 ساعات متواصلة
+    timeout-minutes: 355
 
     steps:
       - name: Checkout Repository
@@ -48,20 +41,15 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run Full Pipeline (Scrape All First, Then Translate All)
+      - name: Run High-Speed Parallel Translator
         run: |
-          START_VAL="${{ github.event.inputs.start_chapter }}"
-          END_VAL="${{ github.event.inputs.end_chapter }}"
-          S_DELAY="${{ github.event.inputs.scrape_delay }}"
-          T_DELAY="${{ github.event.inputs.translate_delay }}"
+          START_VAL="${{ github.event.inputs.start_chapter || '1' }}"
+          END_VAL="${{ github.event.inputs.end_chapter || '2334' }}"
+          WORKERS_VAL="${{ github.event.inputs.workers || '20' }}"
 
-          START_ARG=${START_VAL:+--start $START_VAL}
-          END_ARG=${END_VAL:+--end $END_VAL}
-          S_DELAY_ARG=${S_DELAY:+--scrape-delay $S_DELAY}
-          T_DELAY_ARG=${T_DELAY:+--delay $T_DELAY}
-
-          echo "Running two-phase pipeline with 15 parallel workers..."
-          python -u main.py $START_ARG $END_ARG $S_DELAY_ARG --engine fast --workers 15
+          echo "Launching Parallel Translation with $WORKERS_VAL workers for chapters $START_VAL to $END_VAL..."
+          python -u parallel_translator.py --start $START_VAL --end $END_VAL --workers $WORKERS_VAL
+          python compile_novel.py
 
       - name: Commit and Push Translated Chapters
         if: always()
@@ -70,5 +58,5 @@ jobs:
           git config --local user.name "GitHub Action Bot"
           git pull --rebase origin main || true
           git add output/
-          git commit -m "Auto-update: Scraped & Translated chapters $(date -u '+%Y-%m-%d %H:%M:%S UTC')" || echo "No changes to commit"
+          git commit -m "Auto-update: Completed parallel translations $(date -u '+%Y-%m-%d %H:%M:%S UTC')" || echo "No changes to commit"
           git push origin main || echo "Push failed or nothing to push"

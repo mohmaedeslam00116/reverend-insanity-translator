@@ -153,7 +153,7 @@ class ParallelNovelTranslator:
             from main import ProgressTracker
             tracker = ProgressTracker(Config.PROGRESS_FILE)
             for cnum in range(start_chapter, end_chapter + 1):
-                t_f = Config.TRANSLATED_AR_DIR / f"chapter_{cnum:04d}.txt"
+                t_f = self.find_file(Config.TRANSLATED_AR_DIR, cnum)
                 if t_f.exists():
                     tracker.mark_completed(cnum)
         except Exception:
