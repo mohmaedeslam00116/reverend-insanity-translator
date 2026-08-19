@@ -78,12 +78,13 @@ class GeminiTranslator:
     """
 
     SUPPORTED_MODELS = [
+        "gemini-3.5-flash-lite",
+        "gemini-3.5-flash",
         "gemini-2.5-flash",
         "gemini-2.0-flash",
-        "gemini-1.5-flash",
     ]
 
-    def __init__(self, key_pool: GeminiKeyPool, model: str = "gemini-2.5-flash"):
+    def __init__(self, key_pool: GeminiKeyPool, model: str = "gemini-3.5-flash-lite"):
         self.key_pool = key_pool
         self.model = model
 
