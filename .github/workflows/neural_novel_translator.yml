@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       novel:
-        description: 'Novel Slug (معرف الرواية مثل shadow-slave أو reverend-insanity)'
+        description: 'Novel Slug (اسم الرواية مثل reverend-insanity أو shadow-slave)'
         required: true
-        default: 'shadow-slave'
+        default: 'reverend-insanity'
       model:
         description: 'Neural Model (النموذج العصبي)'
         required: true
@@ -24,9 +24,14 @@ on:
         required: false
         default: '50'
       batch_size:
-        description: 'Tensor Batch Size (حجم دفعة المعالجة)'
+        description: 'Tensor Batch Size (حجم دفعة التنسور)'
         required: false
         default: '16'
+      overwrite:
+        description: 'Overwrite & Clean Old Translation (إعادة الترجمة واستبدال القديمة)'
+        type: boolean
+        required: false
+        default: true
 
 permissions:
   contents: write
@@ -65,20 +70,25 @@ jobs:
 
       - name: 🚀 Run Neural Pipeline
         run: |
+          OVERWRITE_FLAG=""
+          if [ "${{ github.event.inputs.overwrite }}" = "true" ]; then
+            OVERWRITE_FLAG="--overwrite"
+          fi
           python neural_novel_translator.py \
-            --novel "${{ github.event.inputs.novel || 'shadow-slave' }}" \
+            --novel "${{ github.event.inputs.novel || 'reverend-insanity' }}" \
             --model "${{ github.event.inputs.model || 'Helsinki-NLP/opus-mt-en-ar' }}" \
             --start ${{ github.event.inputs.start_chapter || '1' }} \
             --end ${{ github.event.inputs.end_chapter || '50' }} \
-            --batch-size ${{ github.event.inputs.batch_size || '16' }}
+            --batch-size ${{ github.event.inputs.batch_size || '16' }} \
+            $OVERWRITE_FLAG
 
       - name: 💾 Commit & Push Translated Chapters
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add novels/${{ github.event.inputs.novel || 'shadow-slave' }}/
+          git add novels/${{ github.event.inputs.novel || 'reverend-insanity' }}/
           if git diff --staged --quiet; then
-            echo "No new chapters to commit."
+            echo "No changes to commit."
           else
             git commit -m "feat(neural): translate chapters ${{ github.event.inputs.start_chapter }}-${{ github.event.inputs.end_chapter }} of ${{ github.event.inputs.novel }} via ${{ github.event.inputs.model }} [skip ci]"
             git push origin main

@@ -72,7 +72,6 @@ class NeuralEngine:
 
             try:
                 if self.is_nllb:
-                    # NLLB-200 specific kwargs
                     inputs = self.tokenizer(
                         clean_chunk,
                         return_tensors="pt",
@@ -80,7 +79,6 @@ class NeuralEngine:
                         truncation=True,
                         max_length=512,
                     ).to(self.model.device)
-                    # Modern Standard Arabic code in NLLB is arb_Arab
                     forced_bos_token_id = self.tokenizer.convert_tokens_to_ids("arb_Arab")
                     with torch.no_grad():
                         translated_tokens = self.model.generate(
@@ -90,7 +88,6 @@ class NeuralEngine:
                             num_beams=2,
                         )
                 else:
-                    # MarianMT / OPUS-MT
                     inputs = self.tokenizer(
                         clean_chunk,
                         return_tensors="pt",
@@ -176,28 +173,59 @@ class NovelScraper:
 class NeuralNovelPipeline:
     """Full pipeline linking Scraper, Neural Engine, Glossary, and Book Builder."""
 
-    def __init__(self, novel_slug: str, model_name: str = "Helsinki-NLP/opus-mt-en-ar"):
-        self.novel_slug = novel_slug
-        self.novel_dir = Path("novels") / novel_slug
+    def __init__(self, novel_slug: str, model_name: str = "Helsinki-NLP/opus-mt-en-ar", overwrite: bool = False):
+        self.novel_slug = novel_slug.strip().lower()
+        self.novel_dir = Path("novels") / self.novel_slug
         self.raw_dir = self.novel_dir / "raw_en"
         self.trans_dir = self.novel_dir / "translated_ar"
         self.glossary_file = self.novel_dir / "glossary.json"
+        self.overwrite = overwrite
 
         self.raw_dir.mkdir(parents=True, exist_ok=True)
         self.trans_dir.mkdir(parents=True, exist_ok=True)
 
-        self.scraper = NovelScraper(novel_slug)
+        self.scraper = NovelScraper(self.novel_slug)
         self.engine = NeuralEngine(model_name=model_name)
         self.glossary = self._load_glossary()
 
     def _load_glossary(self) -> Dict[str, str]:
+        # 1. Check novel-specific glossary
         if self.glossary_file.exists():
             try:
                 with open(self.glossary_file, "r", encoding="utf-8") as f:
                     return json.load(f)
             except Exception:
                 pass
+        # 2. Check root glossary (e.g. for reverend-insanity)
+        root_gloss = Path("glossary.json")
+        if self.novel_slug == "reverend-insanity" and root_gloss.exists():
+            try:
+                with open(root_gloss, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                pass
         return {}
+
+    def _find_existing_raw_file(self, chapter_num: int) -> Optional[Path]:
+        """Search local directories for an existing raw English chapter."""
+        # 1. Check novels/{slug}/raw_en
+        p1 = self.raw_dir / f"chapter_{chapter_num:04d}.txt"
+        if p1.exists() and p1.stat().st_size > 50:
+            return p1
+
+        # Search recursively in novels/{slug}/raw_en
+        matches = list(self.raw_dir.rglob(f"chapter_{chapter_num:04d}.txt"))
+        if matches:
+            return matches[0]
+
+        # 2. If reverend-insanity, check output/raw_en
+        if self.novel_slug == "reverend-insanity":
+            p2 = Path("output/raw_en")
+            matches_ri = list(p2.rglob(f"chapter_{chapter_num:04d}.txt"))
+            if matches_ri:
+                return matches_ri[0]
+
+        return None
 
     def apply_glossary(self, text: str) -> str:
         for en_term, ar_term in sorted(self.glossary.items(), key=lambda x: len(x[0]), reverse=True):
@@ -212,23 +240,25 @@ class NeuralNovelPipeline:
         print(f" • النموذج العصبي: {self.engine.model_name}")
         print(f" • النطاق: الفصول من {start} إلى {end}")
         print(f" • حجم دفعة التنسور (Batch Size): {batch_size}")
+        print(f" • إعادة الترجمة وحذف القديم (Overwrite): {'نعم' if self.overwrite else 'لا'}")
         print("=" * 80)
 
         t0 = time.time()
         success_count = 0
 
         for cnum in range(start, end + 1):
-            raw_file = self.raw_dir / f"chapter_{cnum:04d}.txt"
             trans_file = self.trans_dir / f"chapter_{cnum:04d}.txt"
 
-            if trans_file.exists() and trans_file.stat().st_size > 100:
+            if trans_file.exists() and trans_file.stat().st_size > 100 and not self.overwrite:
                 continue
 
-            # 1. Scrape raw
+            # 1. Find or Scrape raw chapter
             paragraphs = []
             title = f"Chapter {cnum}"
-            if raw_file.exists():
-                with open(raw_file, "r", encoding="utf-8") as f:
+            raw_existing = self._find_existing_raw_file(cnum)
+
+            if raw_existing:
+                with open(raw_existing, "r", encoding="utf-8") as f:
                     lines = f.readlines()
                 if lines:
                     title = lines[0].replace("#", "").strip()
@@ -240,7 +270,8 @@ class NeuralNovelPipeline:
                     continue
                 title = res["title"]
                 paragraphs = res["paragraphs"]
-                with open(raw_file, "w", encoding="utf-8") as f:
+                raw_save = self.raw_dir / f"chapter_{cnum:04d}.txt"
+                with open(raw_save, "w", encoding="utf-8") as f:
                     f.write(f"# {title}\n\n" + "\n\n".join(paragraphs) + "\n")
 
             if not paragraphs:
@@ -269,6 +300,28 @@ class NeuralNovelPipeline:
         print(f" 🏆 اكتملت الترجمة العصبية بنجاح: {success_count} فصل في {elapsed_total:.1f} ثانية")
         print("=" * 80)
 
+    def compile_master(self) -> Path:
+        """Compile translated chapters into master book."""
+        master_file = self.novel_dir / f"{self.novel_slug}_Arabic_Neural_Complete.md"
+        files = sorted(
+            list(self.trans_dir.glob("chapter_*.txt")),
+            key=lambda x: int(re.search(r"chapter_(\d+)", x.name).group(1))
+            if re.search(r"chapter_(\d+)", x.name)
+            else 0,
+        )
+        if not files:
+            return master_file
+
+        with open(master_file, "w", encoding="utf-8") as out:
+            out.write(f"# 📖 رواية {self.novel_slug.replace('-', ' ').title()} - الترجمة العصبية المباشرة\n\n")
+            out.write(f"- **إجمالي الفصول المترجمة:** {len(files)} فصلاً\n\n---\n\n")
+            for f in files:
+                with open(f, "r", encoding="utf-8") as cf:
+                    out.write(cf.read().strip() + "\n\n---\n\n")
+
+        print(f"[Master] تم تجميع الكتاب العصبي الكامل: {master_file.resolve()} ({len(files)} فصل)")
+        return master_file
+
 
 def main():
     parser = argparse.ArgumentParser(description="Neural Novel Translation Pipeline")
@@ -277,10 +330,12 @@ def main():
     parser.add_argument("--start", type=int, default=1, help="Start chapter")
     parser.add_argument("--end", type=int, default=10, help="End chapter")
     parser.add_argument("--batch-size", type=int, default=16, help="Tensor batch size")
+    parser.add_argument("--overwrite", action="store_true", help="Overwrite existing translated chapters")
 
     args = parser.parse_args()
-    pipeline = NeuralNovelPipeline(novel_slug=args.novel, model_name=args.model)
+    pipeline = NeuralNovelPipeline(novel_slug=args.novel, model_name=args.model, overwrite=args.overwrite)
     pipeline.run(start=args.start, end=args.end, batch_size=args.batch_size)
+    pipeline.compile_master()
 
 
 if __name__ == "__main__":
