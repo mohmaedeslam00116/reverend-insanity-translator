@@ -14,14 +14,18 @@ on:
       batch_size:
         description: 'عدد الفصول المراد معالجتها في هذه الجلسة'
         required: false
-        default: '30'
-      delay_seconds:
-        description: 'الفاصل الزمني بالثواني (تأخير آمن)'
+        default: '100'
+      engine:
+        description: 'محرك الترجمة: fast (سريع جداً ومجاني) أو ai (ذكاء اصطناعي)'
         required: false
-        default: '15'
+        default: 'fast'
+      delay_seconds:
+        description: 'الفاصل الزمني بالثواني'
+        required: false
+        default: '1'
   schedule:
-    # يعمل تلقائياً كل 30 دقيقة في السحابة لمواصلة الترجمة من حيث توقفت
-    - cron: '*/30 * * * *'
+    # يعمل تلقائياً كل ساعة في السحابة لمواصلة الترجمة من حيث توقفت
+    - cron: '0 * * * *'
 
 permissions:
   contents: write
@@ -52,12 +56,13 @@ jobs:
         env:
           KILO_API_KEY: ${{ secrets.KILO_API_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbnYiOiJwcm9kdWN0aW9uIiwia2lsb1VzZXJJZCI6IjNhYTY0YWJiLTYyOWItNDU4Yy05MDk0LWRmMDA0YmFjZDQ4ZiIsImFwaVRva2VuUGVwcGVyIjoiMTBkMjA2NDQtNDljMy00MDZjLWIxOTktYjE4MTEwYzQ4MjhlIiwidmVyc2lvbiI6MywiaWF0IjoxNzg3MDk1MzMzLCJleHAiOjE5NDQ3NzUzMzN9.PnBR71HRHyp3dBbBDlRKbjNIezhHya8RthHuL4iHExs' }}
           KILO_MODEL: 'stepfun/step-3.7-flash:free'
-          CHUNK_SIZE_PARAGRAPHS: '100'
+          CHUNK_SIZE_PARAGRAPHS: '30'
         run: |
           START_ARG=""
           END_ARG=""
-          BATCH_ARG="--batch-size 30"
-          DELAY_ARG="--delay 15"
+          BATCH_ARG="--batch-size 100"
+          ENGINE_ARG="--engine fast"
+          DELAY_ARG="--delay 1"
 
           if [ -n "${{ github.event.inputs.start_chapter }}" ]; then
             START_ARG="--start ${{ github.event.inputs.start_chapter }}"
@@ -71,12 +76,16 @@ jobs:
             BATCH_ARG="--batch-size ${{ github.event.inputs.batch_size }}"
           fi
 
+          if [ -n "${{ github.event.inputs.engine }}" ]; then
+            ENGINE_ARG="--engine ${{ github.event.inputs.engine }}"
+          fi
+
           if [ -n "${{ github.event.inputs.delay_seconds }}" ]; then
             DELAY_ARG="--delay ${{ github.event.inputs.delay_seconds }}"
           fi
 
-          echo "Running command: python -u main.py --auto $START_ARG $END_ARG $BATCH_ARG $DELAY_ARG"
-          python -u main.py --auto $START_ARG $END_ARG $BATCH_ARG $DELAY_ARG
+          echo "Running command: python -u main.py --auto $START_ARG $END_ARG $BATCH_ARG $ENGINE_ARG $DELAY_ARG"
+          python -u main.py --auto $START_ARG $END_ARG $BATCH_ARG $ENGINE_ARG $DELAY_ARG
           python compile_novel.py
 
       - name: Commit and Push Translated Chapters

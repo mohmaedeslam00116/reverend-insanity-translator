@@ -91,10 +91,17 @@ def parse_args():
         help="البدء تلقائياً من أول فصل لم يتم إكماله في سجل progress.json",
     )
     parser.add_argument(
+        "--engine",
+        type=str,
+        choices=["fast", "ai"],
+        default="fast",
+        help="محرك الترجمة: 'fast' (ترجمة جوجل فائقة السرعة مع مصطلحات الرواية) أو 'ai' (ترجمة أدبية عبر نماذج الذكاء الاصطناعي)",
+    )
+    parser.add_argument(
         "-d", "--delay",
         type=float,
-        default=Config.REQUEST_DELAY_SECONDS,
-        help=f"الفاصل الزمني بالثواني بين كل فصل والآخر (الافتراضي: {Config.REQUEST_DELAY_SECONDS})",
+        default=2.0,
+        help="الفاصل الزمني بالثواني بين كل فصل والآخر (الافتراضي مع المحرك السريع: 2 ثانية)",
     )
     parser.add_argument(
         "-m", "--model",
@@ -164,13 +171,18 @@ def run_pipeline():
     print(" 📖 أداة سحب وترجمة رواية Reverend Insanity (القس المجنون)")
     print("=" * 70)
     print(f" • نطاق الفصول: من {start_chap} إلى {end_chap}")
-    print(f" • النموذج: {args.model}")
+    print(f" • المحرك: {'Google Fast Engine (فائق السرعة مع قاموس الرواية)' if args.engine == 'fast' else f'AI Engine ({args.model})'}")
     print(f" • الفاصل الزمني: {args.delay} ثانية")
     print(f" • مجلد الإخراج: {Config.OUTPUT_DIR.resolve()}")
     print("=" * 70)
 
     scraper = NovelFireScraper()
-    translator = KiloTranslator(model=args.model)
+    
+    if args.engine == "fast":
+        from fast_translator import FastGoogleTranslator
+        translator = FastGoogleTranslator()
+    else:
+        translator = KiloTranslator(model=args.model)
 
     total_chapters = end_chap - start_chap + 1
     success_count = 0
